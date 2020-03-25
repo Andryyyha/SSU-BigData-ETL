@@ -1,20 +1,19 @@
 
+import com.amazonaws.services.kinesis.AmazonKinesis;
+import com.amazonaws.services.kinesis.AmazonKinesisAsyncClientBuilder;
+import com.amazonaws.services.kinesis.model.PutRecordsRequest;
+import com.amazonaws.services.kinesis.model.PutRecordsRequestEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.core.SdkBytes;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
-import software.amazon.awssdk.services.kinesis.model.PutRecordRequest;
-import software.amazon.kinesis.common.KinesisClientUtil;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 
 
 public class DataGenerator {
@@ -37,36 +36,21 @@ public class DataGenerator {
     }
 
     private static void writeData(List<String> data, String key, String streamName) {
-        KinesisAsyncClient kinesisClient = KinesisClientUtil
-                .createKinesisAsyncClient(KinesisAsyncClient
-                        .builder()
-                        .region(Region.US_EAST_2));
+        AmazonKinesis kinesisClient = AmazonKinesisAsyncClientBuilder.defaultClient();
 
-        for (int i = 0; i < data.size(); i++) {
-            String current = data.get(i);
-            byte[] bytes = current.getBytes();
-            if (bytes == null) {
-                LOG.warn("Could not get bytes for record");
-                System.out.println("Could not get bytes for record");
-                return;
+        for (int i = 0; i < data.size(); i += 500) {
+
+            System.out.println("putting from: " + i);
+            PutRecordsRequest request = new PutRecordsRequest().withStreamName(streamName);
+            List<PutRecordsRequestEntry> entries = new ArrayList<>();
+            for (int j = i; j < i + 500 && j < data.size(); j++) {
+                String current = data.get(j);
+                byte[] bytes = current.getBytes();
+                entries.add(new PutRecordsRequestEntry().withData(ByteBuffer.wrap(bytes)).withPartitionKey(key + i));
             }
 
-            LOG.info("Putting record: " + current);
-            System.out.println("Putting record: " + i + " " + current);
-            PutRecordRequest request = PutRecordRequest.builder()
-                    .partitionKey(key) // We use the ticker symbol as the partition key, explained in the Supplemental Information section below.
-                    .streamName(streamName)
-                    .data(SdkBytes.fromByteArray(bytes))
-                    .build();
-            try {
-                kinesisClient.putRecord(request).get();
-            } catch (InterruptedException e) {
-                LOG.info("Interrupted, assuming shutdown.");
-                System.out.println("Interrupted, assuming shutdown.");
-            } catch (ExecutionException e) {
-                LOG.error("Exception while sending data to Kinesis. Will try again next cycle.", e);
-                System.out.println("Exception while sending data to Kinesis. Will try again next cycle.");
-            }
+            request.setRecords(entries);
+            kinesisClient.putRecords(request);
         }
     }
 
