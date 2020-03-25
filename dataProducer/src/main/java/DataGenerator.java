@@ -32,10 +32,11 @@ public class DataGenerator {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        data.remove(0);
         return data;
     }
 
-    public static void writeData(List<String> data) {
+    private static void writeData(List<String> data, String key, String streamName) {
         KinesisAsyncClient kinesisClient = KinesisClientUtil
                 .createKinesisAsyncClient(KinesisAsyncClient
                         .builder()
@@ -51,10 +52,10 @@ public class DataGenerator {
             }
 
             LOG.info("Putting record: " + current);
-            System.out.println("Could not get bytes for record");
+            System.out.println("Putting record: " + i + " " + current);
             PutRecordRequest request = PutRecordRequest.builder()
-                    .partitionKey("air") // We use the ticker symbol as the partition key, explained in the Supplemental Information section below.
-                    .streamName("air_pollution")
+                    .partitionKey(key) // We use the ticker symbol as the partition key, explained in the Supplemental Information section below.
+                    .streamName(streamName)
                     .data(SdkBytes.fromByteArray(bytes))
                     .build();
             try {
@@ -66,16 +67,14 @@ public class DataGenerator {
                 LOG.error("Exception while sending data to Kinesis. Will try again next cycle.", e);
                 System.out.println("Exception while sending data to Kinesis. Will try again next cycle.");
             }
-//        KinesisProducer kinesis = new KinesisProducer();
-//        for (int i = 0; i < data.size(); ++i) {
-//            ByteBuffer row = null;
-//            try {
-//                row = ByteBuffer.wrap(data.get(i).getBytes("UTF-8"));
-//            } catch (UnsupportedEncodingException ex) {
-//                ex.printStackTrace();
-//            }
-//            kinesis.addUserRecord("air_pollution", "air", row);
-//        }
         }
+    }
+
+    public static void writeDataAir(List<String> data) {
+        writeData(data, "air", "air_pollution");
+    }
+
+    public static void writeDataStations(List<String> data) {
+        writeData(data, "station", "stations");
     }
 }
