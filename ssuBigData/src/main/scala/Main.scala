@@ -1,76 +1,55 @@
-import org.apache.spark.sql.expressions.Window
+import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.streaming.pubsub.{PubsubUtils, SparkGCPCredentials}
+import org.apache.spark.streaming.{Seconds, StreamingContext}
+import Metrics.startMetrics
 
 object Main {
 
-  val elevationCol = "elevation"
-
-  val stationsSchema = StructType(
-    List(
-      StructField("id", StringType, nullable = true),
-      StructField("name", StringType, nullable = true),
-      StructField("address", StringType, nullable = true),
-      StructField("lon", StringType, nullable = true),
-      StructField("lat", StringType, nullable = true),
-      StructField("elevation", IntegerType, nullable = true)
-    )
-  )
-
-  def minMaxLvl(data: DataFrame) =
-    data
-      .agg(
-        min(elevationCol),
-        max(elevationCol),
-      )
-
-  def avgLvl(data: DataFrame) =
-    data
-      .agg(
-        avg(elevationCol)
-      )
-
-  def medianLvl(data: DataFrame, spark: SparkSession) = {
-    val w = Window.orderBy("id")
-    val dataWithIndex = data.withColumn("index", row_number().over(w))
-    val count = data.count().toInt
-    val halfCount = count / 2
-    val nextHalfCount = halfCount + 1
-    var median = 0.0
-    if (count % 2 == 0) {
-      val left = dataWithIndex.where(s"index == $halfCount").select(elevationCol).collect.map(x => x.get(0)).mkString.toDouble
-      val right = dataWithIndex.where(s"index == $nextHalfCount").select(elevationCol).collect.map(x => x.get(0)).mkString.toDouble
-      median = (left + right) / 2
-    } else {
-      median = dataWithIndex.where(s"index == $halfCount").select(elevationCol).collect.map(x => x.get(0)).mkString.toDouble
-    }
-    import spark.implicits._
-    val result = Seq(median).toDF("median")
-    result
-  }
-
   def main(args: Array[String]) : Unit = {
+    if (args.length != 4) {
+      System.err.println(
+        """
+          | Usage: TrendingHashtags <projectID> <windowLength> <slidingInterval> <totalRunningTime>
+          |
+          |     <projectID>: ID of Google Cloud project
+          |     <windowLength>: The duration of the window, in seconds
+          |     <slidingInterval>: The interval at which the window calculation is performed, in seconds.
+          |     <totalRunningTime>: Total running time for the application, in minutes. If 0, runs indefinitely until termination.
+          |
+        """.stripMargin)
+      System.exit(1)
+    }
+
+    val Seq(projectID, windowInterval, slidingInterval, totalRunningTime) = args.toSeq
+    val appName = "ssuBigData"
+    val conf = new SparkConf().setMaster("local[2]").setAppName(appName)
+    val ssc = new StreamingContext(conf, Seconds(slidingInterval.toInt))
+
     val spark: SparkSession = SparkSession
       .builder()
-      .appName("testApp")
-      .config("spark.master", "local[2]")
+      .appName(appName)
+      .config(conf)
       .getOrCreate()
 
-    val airDF = spark.read
-      .format("csv")
-      .option("header", "true")
-      .option("mode", "DROPMALFORMED")
-      .load("test-air.csv")
+    val stationsStream = PubsubUtils
+      .createStream(
+        ssc,
+        projectID,
+        None,
+        "stations_pull",
+        SparkGCPCredentials.builder.build(), StorageLevel.MEMORY_AND_DISK_SER_2)
 
-    val stationsDF = spark.read
-      .format("csv")
-      .option("header", "true")
-      .schema(stationsSchema)
-      .load("test-stations.csv")
+    startMetrics(stationsStream, windowInterval.toInt, slidingInterval.toInt, spark)
 
-    minMaxLvl(stationsDF).show()
-    avgLvl(stationsDF).show()
-    medianLvl(stationsDF, spark).show()
+    ssc.start()
+
+    if (totalRunningTime.toInt == 0) {
+      ssc.awaitTermination()
+    }
+    else {
+      ssc.awaitTerminationOrTimeout(1000 * 60 * totalRunningTime.toInt)
+    }
   }
 }
