@@ -23,7 +23,7 @@ object Metrics {
   def avgLvl(data: DataFrame): DataFrame =
     data
       .agg(
-        avg(elevationCol)alias("avg_elevation")
+        avg(elevationCol).alias("avg_elevation")
       )
 
   def medianLvl(data: DataFrame, spark: SparkSession): DataFrame = {
