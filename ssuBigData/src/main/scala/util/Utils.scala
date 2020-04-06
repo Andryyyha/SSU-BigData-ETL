@@ -4,26 +4,26 @@ import java.nio.charset.StandardCharsets
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructField, StructType}
 import org.apache.spark.streaming.pubsub.SparkPubsubMessage
 
 object Utils {
 
   val stationsSchema: StructType = StructType(
     List(
-      StructField("id", StringType, nullable = true),
-      StructField("name", StringType, nullable = true),
-      StructField("address", StringType, nullable = true),
-      StructField("lon", StringType, nullable = true),
-      StructField("lat", StringType, nullable = true),
-      StructField("elevation", IntegerType, nullable = true)
+      StructField("id", IntegerType, nullable = false),
+      StructField("name", StringType, nullable = false),
+      StructField("address", StringType, nullable = false),
+      StructField("lon", DoubleType, nullable = false),
+      StructField("lat", DoubleType, nullable = false),
+      StructField("elevation", IntegerType, nullable = false)
     )
   )
 
   def getStation(input: RDD[SparkPubsubMessage]): RDD[Row] = {
     input.map(message => new String(message.getData(), StandardCharsets.UTF_8))
       .filter(_.length != 0)
-      .map(_.split(""",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"""))
+      .map(_.split(","))
       .map {
         attribute =>
             List(toInt(attribute(0)),
@@ -37,19 +37,19 @@ object Utils {
       .map(attribute => Row.fromSeq(attribute))
   }
 
-  def toDouble(r: String): Option[Double] = {
+  def toDouble(r: String):Double = {
     try {
-      Some(r.toDouble)
+      r.toDouble
     } catch {
-      case e: Exception => None
+      case e: Exception => 0.0
     }
   }
 
-  def toInt(r: String): Option[Int] = {
+  def toInt(r: String): Int = {
     try {
-      Some(r.toInt)
+      r.toInt
     } catch {
-      case e: Exception => None
+      case e: Exception => 0
     }
   }
 }

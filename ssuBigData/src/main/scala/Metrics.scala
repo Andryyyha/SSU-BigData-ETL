@@ -1,5 +1,7 @@
+import java.nio.charset.StandardCharsets
+
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{current_timestamp, lit, date_format}
+import org.apache.spark.sql.functions.{current_timestamp, date_format, lit}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{avg, max, min, row_number}
 import org.apache.spark.streaming.Seconds
@@ -7,6 +9,7 @@ import org.apache.spark.streaming.dstream.DStream
 import org.apache.spark.streaming.pubsub.SparkPubsubMessage
 import util.Utils.stationsSchema
 import util.Utils.getStation
+import util.Utils.toInt
 
 object Metrics {
   val elevationCol = "elevation"
@@ -14,8 +17,8 @@ object Metrics {
   def minMaxLvl(data: DataFrame): DataFrame =
     data
       .agg(
-        min(elevationCol),
-        max(elevationCol))
+        min(elevationCol).alias("min_elevation"),
+        max(elevationCol).alias("max_elevation"))
 
   def avgLvl(data: DataFrame): DataFrame =
     data
@@ -47,19 +50,21 @@ object Metrics {
     stream.window(Seconds(windowInterval), Seconds(slidingInterval))
       .foreachRDD {
         rdd =>
-          val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema)
-            .withColumn("timestamp", lit(date_format(current_timestamp(), "dd.MM.yyyy_hh-mm")))
-            .cache()
+          if(toInt(new String(rdd.first.getData(), StandardCharsets.UTF_8)) > 0) {
+            val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema)
+              .withColumn("timestamp", lit(date_format(current_timestamp(), "dd.MM.yyyy_hh-mm")))
+              .cache()
 
-          minMaxLvl(stationsDF).write.format("bigquery").option("table", "levels.min__and_max_levels")
-            .option("temporaryGcsBucket","prod-eu-data_and_other").mode(SaveMode.Append).save()
-          avgLvl(stationsDF).write.format("bigquery").option("table", "levels.average_level")
-            .option("temporaryGcsBucket","prod-eu-data_and_other").mode(SaveMode.Append).save()
-          medianLvl(stationsDF, spark).write.format("bigquery").option("table", "levels.median_level")
-            .option("temporaryGcsBucket","prod-eu-data_and_other").mode(SaveMode.Append).save()
+            minMaxLvl(stationsDF).write.format("bigquery").option("table", "levels.min__and_max_levels")
+              .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
+            avgLvl(stationsDF).write.format("bigquery").option("table", "levels.average_level")
+              .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
+            medianLvl(stationsDF, spark).write.format("bigquery").option("table", "levels.median_level")
+              .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
 
-          stationsDF.write.mode(SaveMode.Append).partitionBy("timestamp")
-            .parquet("gs://prod-eu-data_and_other/data/")
+            stationsDF.write.mode(SaveMode.Append).partitionBy("timestamp")
+              .parquet("gs://prod-eu-data_and_other/data/")
+          }
       }
   }
 }
