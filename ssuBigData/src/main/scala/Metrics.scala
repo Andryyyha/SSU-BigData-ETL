@@ -1,7 +1,5 @@
-import java.nio.charset.StandardCharsets
 
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{current_timestamp, date_format, lit}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{avg, max, min, row_number}
 import org.apache.spark.streaming.Seconds
@@ -9,7 +7,6 @@ import org.apache.spark.streaming.dstream.DStream
 import org.apache.spark.streaming.pubsub.SparkPubsubMessage
 import util.Utils.stationsSchema
 import util.Utils.getStation
-import util.Utils.toInt
 
 object Metrics {
   val elevationCol = "elevation"
@@ -50,10 +47,7 @@ object Metrics {
     stream.window(Seconds(windowInterval), Seconds(slidingInterval))
       .foreachRDD {
         rdd =>
-          if(toInt(new String(rdd.first.getData(), StandardCharsets.UTF_8)) > 0) {
-            val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema)
-              .withColumn("timestamp", lit(date_format(current_timestamp(), "dd.MM.yyyy_hh-mm")))
-              .cache()
+            val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema).cache()
 
             minMaxLvl(stationsDF).write.format("bigquery").option("table", "levels.min__and_max_levels")
               .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
@@ -62,9 +56,7 @@ object Metrics {
             medianLvl(stationsDF, spark).write.format("bigquery").option("table", "levels.median_level")
               .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
 
-            stationsDF.write.mode(SaveMode.Append).partitionBy("timestamp")
-              .parquet("gs://prod-eu-data_and_other/data/")
+            stationsDF.write.mode(SaveMode.Append).parquet("gs://prod-eu-data_and_other/data/")
           }
-      }
   }
 }
