@@ -15,8 +15,7 @@ object Metrics {
     data
       .agg(
         min(elevationCol),
-        max(elevationCol),
-      )
+        max(elevationCol))
 
   def avgLvl(data: DataFrame): DataFrame =
     data
