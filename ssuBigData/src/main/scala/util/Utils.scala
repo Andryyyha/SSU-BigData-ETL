@@ -23,7 +23,7 @@ object Utils {
   def getStation(input: RDD[SparkPubsubMessage]): RDD[Row] = {
     input.map(message => new String(message.getData(), StandardCharsets.UTF_8))
       .filter(_.length != 0)
-      .map(_.split(","))
+      .map(_.split(""",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"""))
       .map {
         attribute =>
             List(toInt(attribute(0)),

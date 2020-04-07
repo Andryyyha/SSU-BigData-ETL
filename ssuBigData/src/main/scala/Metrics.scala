@@ -44,19 +44,19 @@ object Metrics {
 
   def startMetrics(stream: DStream[SparkPubsubMessage], windowInterval: Int, slidingInterval: Int,
                              spark: SparkSession): Unit = {
-    stream.window(Seconds(windowInterval), Seconds(slidingInterval))
-      .foreachRDD {
+    stream.window(Seconds(windowInterval), Seconds(slidingInterval)).foreachRDD {
         rdd =>
-            val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema).cache()
-
-            minMaxLvl(stationsDF).write.format("bigquery").option("table", "levels.min__and_max_levels")
-              .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
-            avgLvl(stationsDF).write.format("bigquery").option("table", "levels.average_level")
-              .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
-            medianLvl(stationsDF, spark).write.format("bigquery").option("table", "levels.median_level")
-              .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
-
-            stationsDF.write.mode(SaveMode.Append).parquet("gs://prod-eu-data_and_other/data/")
+          val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema).cache()
+          val header = stationsDF.first
+          val filtered = stationsDF.filter(line => line != header)
+          filtered.show(24)
+          minMaxLvl(filtered).write.format("bigquery").option("table", "levels.min__and_max_levels")
+            .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
+          avgLvl(filtered).write.format("bigquery").option("table", "levels.average_level")
+            .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
+          medianLvl(filtered, spark).write.format("bigquery").option("table", "levels.median_level")
+            .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
+          filtered.write.mode(SaveMode.Append).parquet("gs://prod-eu-data_and_other/data/")
           }
   }
 }
