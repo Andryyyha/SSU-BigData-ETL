@@ -47,16 +47,14 @@ object Metrics {
     stream.window(Seconds(windowInterval), Seconds(slidingInterval)).foreachRDD {
         rdd =>
           val stationsDF = spark.createDataFrame(getStation(rdd), stationsSchema).cache()
-          val header = stationsDF.first
-          val filtered = stationsDF.filter(line => line != header)
-          filtered.show(24)
-          minMaxLvl(filtered).write.format("bigquery").option("table", "levels.min__and_max_levels")
+          stationsDF.show(500)
+          minMaxLvl(stationsDF).write.format("bigquery").option("table", "levels.min__and_max_levels")
             .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
-          avgLvl(filtered).write.format("bigquery").option("table", "levels.average_level")
+          avgLvl(stationsDF).write.format("bigquery").option("table", "levels.average_level")
             .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
-          medianLvl(filtered, spark).write.format("bigquery").option("table", "levels.median_level")
+          medianLvl(stationsDF, spark).write.format("bigquery").option("table", "levels.median_level")
             .option("temporaryGcsBucket", "prod-eu-data_and_other").mode(SaveMode.Append).save()
-          filtered.write.mode(SaveMode.Append).parquet("gs://prod-eu-data_and_other/data/")
+          stationsDF.write.mode(SaveMode.Append).parquet("gs://prod-eu-data_and_other/data/")
           }
   }
 }
