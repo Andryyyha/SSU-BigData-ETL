@@ -15,7 +15,8 @@ object Metrics {
     data
       .agg(
         min(elevationCol).alias("min_elevation"),
-        max(elevationCol).alias("max_elevation"))
+        max(elevationCol).alias("max_elevation")
+      )
 
   def avgLvl(data: DataFrame): DataFrame =
     data
@@ -24,7 +25,7 @@ object Metrics {
       )
 
   def medianLvl(data: DataFrame, spark: SparkSession): DataFrame = {
-    val w = Window.orderBy("id")
+    val w = Window.orderBy(elevationCol)
     val dataWithIndex = data.withColumn("index", row_number().over(w))
     val count = data.count().toInt
     val halfCount = count / 2
