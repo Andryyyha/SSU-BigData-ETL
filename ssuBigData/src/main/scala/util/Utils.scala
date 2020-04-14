@@ -3,11 +3,16 @@ package util
 import java.nio.charset.StandardCharsets
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.functions.{current_timestamp, date_format, lit}
+import org.apache.spark.sql.{DataFrame, Row, SaveMode}
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructField, StructType}
 import org.apache.spark.streaming.pubsub.SparkPubsubMessage
 
 object Utils {
+
+  val pattern = "yyyy-MM-dd_hh:mm"
+  val bucketName = "prod-eu-data_and_other"
+  val pathToParquet = "gs://prod-eu-data_and_other/data/"
 
   val stationsSchema: StructType = StructType(
     List(
@@ -26,15 +31,26 @@ object Utils {
       .map(_.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"))
       .map {
         attribute =>
-            List(toInt(attribute(0)),
-              attribute(1),
-              attribute(2),
-              toDouble(attribute(3)),
-              toDouble(attribute(4)),
-              toInt(attribute(5))
-            )
+          List(toInt(attribute(0)),
+            attribute(1),
+            attribute(2),
+            toDouble(attribute(3)),
+            toDouble(attribute(4)),
+            toInt(attribute(5))
+          )
       }
       .map(attribute => Row.fromSeq(attribute))
+  }
+
+  def writeToTable(df: DataFrame, tableName: String ): Unit = {
+    df.withColumn("timestamp", date_format(lit(current_timestamp()), pattern))
+      .write.format("bigquery").option("table", tableName)
+      .option("temporaryGcsBucket", bucketName).mode(SaveMode.Append).save()
+  }
+
+  def writeToParquet(df: DataFrame): Unit = {
+    df.withColumn("timestamp", date_format(lit(current_timestamp()), pattern))
+      .write.mode(SaveMode.Append).parquet(pathToParquet)
   }
 
   def toDouble(r: String):Double = {
